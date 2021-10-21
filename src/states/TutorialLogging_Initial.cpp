@@ -1,24 +1,145 @@
 #include "TutorialLogging_Initial.h"
 
-#include "../TutorialLogging.h"
+#include <mc_control/fsm/Controller.h>
+#include <mc_rbdyn/rpy_utils.h>
+#include <mc_tasks/MetaTaskLoader.h>
 
-void TutorialLogging_Initial::configure(const mc_rtc::Configuration & config) {}
-
-void TutorialLogging_Initial::start(mc_control::fsm::Controller & ctl_)
+void TutorialLogging_Initial::configure(const mc_rtc::Configuration & config)
 {
-  auto & ctl = static_cast<TutorialLogging &>(ctl_);
+  config_.load(config);
 }
 
-bool TutorialLogging_Initial::run(mc_control::fsm::Controller & ctl_)
+void TutorialLogging_Initial::start(mc_control::fsm::Controller & ctl)
 {
-  auto & ctl = static_cast<TutorialLogging &>(ctl_);
+  const auto & available_joysticks = ctl.datastore().get<std::vector<std::string>>("Joystick::connected");
+  if(available_joysticks.size() == 0)
+  {
+    mc_rtc::log::error_and_throw<std::runtime_error>("[{}] No joystick connected, bye!", name());
+  }
+  joystick_ = available_joysticks[0] + "::state";
+  update_state(ctl);
+  previous_state_ = current_state_;
+
+  auto transform_task_without_fb = [](mc_tasks::TransformTask & tf) {
+    std::vector<std::string> active_joints;
+    auto jointsPath = tf.frame().rbdJacobian().jointsPath();
+    for(const auto & jIndex : jointsPath)
+    {
+      const auto & joint = tf.robot().mb().joint(jIndex);
+      if(joint.dof() == 1)
+      {
+        active_joints.push_back(joint.name());
+      }
+    }
+    tf.selectActiveJoints(active_joints);
+  };
+
+  auto fb_config = config_("FloatingBase", mc_rtc::Configuration{});
+  fb_config.add("type", "transform");
+  fb_task_ = mc_tasks::MetaTaskLoader::load<mc_tasks::TransformTask>(ctl.solver(), fb_config);
+
+  auto lh_config = config_("LeftHand", mc_rtc::Configuration{});
+  lh_config.add("type", "transform");
+  lh_task_ = mc_tasks::MetaTaskLoader::load<mc_tasks::TransformTask>(ctl.solver(), lh_config);
+  transform_task_without_fb(*lh_task_);
+
+  auto rh_config = config_("RightHand", mc_rtc::Configuration{});
+  rh_config.add("type", "transform");
+  rh_task_ = mc_tasks::MetaTaskLoader::load<mc_tasks::TransformTask>(ctl.solver(), rh_config);
+  transform_task_without_fb(*rh_task_);
+
+  auto joystick_config = config_("joystick", mc_rtc::Configuration{});
+  joystick_config("translation_speed", joystick_translation_speed_);
+  joystick_config("rotation_speed", joystick_rotation_speed_);
+
+  ctl.solver().addTask(fb_task_);
+  ctl.solver().addTask(lh_task_);
+  ctl.solver().addTask(rh_task_);
+
+  ctl.gui().addElement(
+      {}, mc_rtc::gui::Label("Task controlled by joystick:", [this]() { return joystick_task().name(); }),
+      mc_rtc::gui::Label("Control frame:", [this]() { return joystick_local_transform_ ? "Local" : "Global"; }),
+      mc_rtc::gui::Label("Control type:",
+                         [this]() { return joystick_control_rotation_ ? "Rotation" : "Translation"; }));
   output("OK");
-  return true;
 }
 
-void TutorialLogging_Initial::teardown(mc_control::fsm::Controller & ctl_)
+bool TutorialLogging_Initial::run(mc_control::fsm::Controller & ctl)
 {
-  auto & ctl = static_cast<TutorialLogging &>(ctl_);
+  using Axis = mc_joystick::Axis;
+  using Button = mc_joystick::Button;
+  update_state(ctl);
+  auto button_pressed = [this](Button b) { return current_state_.buttons[b] && !previous_state_.buttons[b]; };
+  if(button_pressed(Button::L1))
+  {
+    joystick_task_ = joystick_task_ == 0 ? 2 : joystick_task_ - 1;
+  }
+  if(button_pressed(Button::R1))
+  {
+    joystick_task_ = (joystick_task_ + 1) % 3;
+  }
+  joystick_control_rotation_ = current_state_.axes[Axis::L2] <= 0.0;
+  if(joystick_control_rotation_)
+  {
+    joystick_local_transform_ = current_state_.axes[Axis::R2] >= 0.0;
+  }
+  else
+  {
+    joystick_local_transform_ = current_state_.axes[Axis::R2] <= 0.0;
+  }
+
+  auto & task = joystick_task();
+  sva::PTransformd target = task.target();
+  sva::PTransformd offset = sva::PTransformd::Identity();
+  if(joystick_control_rotation_)
+  {
+    Eigen::Vector3d rpy = {current_state_.axes[Axis::Left_LR], current_state_.axes[Axis::Left_UD],
+                           current_state_.axes[Axis::Right_LR]};
+    rpy *= joystick_rotation_speed_;
+    offset.rotation() = sva::RotX(rpy.x()) * sva::RotY(rpy.y()) * sva::RotZ(rpy.z());
+  }
+  else
+  {
+    offset.translation().x() += current_state_.axes[Axis::Left_UD] * joystick_translation_speed_;
+    offset.translation().y() += current_state_.axes[Axis::Left_LR] * joystick_translation_speed_;
+    offset.translation().z() += current_state_.axes[Axis::Right_UD] * joystick_translation_speed_;
+  }
+  if(joystick_local_transform_)
+  {
+    target = offset * target;
+  }
+  else
+  {
+    target = target * offset;
+  }
+  task.target(target);
+  return done_;
+}
+
+void TutorialLogging_Initial::teardown(mc_control::fsm::Controller & ctl)
+{
+  ctl.solver().removeTask(fb_task_);
+  ctl.solver().removeTask(lh_task_);
+  ctl.solver().removeTask(rh_task_);
+}
+
+void TutorialLogging_Initial::update_state(mc_control::fsm::Controller & ctl)
+{
+  previous_state_ = current_state_;
+  current_state_ = *ctl.datastore().get<const mc_joystick::State *>(joystick_);
+}
+
+mc_tasks::TransformTask & TutorialLogging_Initial::joystick_task()
+{
+  switch(joystick_task_)
+  {
+    case 0:
+      return *fb_task_;
+    case 1:
+      return *lh_task_;
+    default:
+      return *rh_task_;
+  }
 }
 
 EXPORT_SINGLE_STATE("TutorialLogging_Initial", TutorialLogging_Initial)

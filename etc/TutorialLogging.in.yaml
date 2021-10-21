@@ -30,7 +30,15 @@ collisions:
 - type: collision
   useMinimal: true
 # Initial set of contacts
-contacts: []
+contacts:
+- r1: jvrc1
+  r2: ground
+  r1Surface: LeftFoot
+  r2Surface: AllGround
+- r1: jvrc1
+  r2: ground
+  r1Surface: RightFoot
+  r2Surface: AllGround
 # Some options for a specific robot
 jvrc1:
   posture:
@@ -41,6 +49,17 @@ jvrc1:
     weight: 100
 # Implement some additional text states
 states: {}
+configs:
+  TutorialLogging_Initial:
+    FloatingBase:
+      frame: base_link
+    LeftHand:
+      frame: LeftHand
+    RightHand:
+      frame: RightHand
+    joystick:
+      translation_speed: 0.001
+      rotation_speed: 0.01
 # Transitions map
 transitions:
 - [TutorialLogging_Initial, OK, TutorialLogging_Initial, Strict]
