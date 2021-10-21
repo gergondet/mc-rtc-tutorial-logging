@@ -49,6 +49,12 @@ struct ROSAxisMapping
   double dir;
 };
 
+struct ROSAxisToButtonMapping
+{
+  size_t index;
+  std::array<mc_joystick::Button, 2> buttons;
+};
+
 } // namespace
 
 static std::vector<ROSButtonMapping> get_buttons_mapping(const std::map<std::string, mc_joystick::Button> & map)
@@ -62,21 +68,29 @@ static std::vector<ROSButtonMapping> get_buttons_mapping(const std::map<std::str
   return out;
 }
 
-static std::vector<ROSAxisMapping> get_axes_mapping(const std::map<std::string, mc_joystick::Axis> & map,
-                                                    const std::vector<mc_joystick::Axis> & inverted)
+static void get_axes_mapping(const std::map<std::string, mc_rtc::Configuration> & map,
+                             const std::vector<mc_joystick::Axis> & inverted,
+                             std::vector<ROSAxisMapping> & axis_mapping,
+                             std::vector<ROSAxisToButtonMapping> & axis_to_button_mapping)
 {
-  std::vector<ROSAxisMapping> out;
-  out.reserve(map.size());
+  axis_mapping.reserve(map.size());
   for(const auto & m : map)
   {
-    double dir = 1.0;
-    if(std::find(inverted.begin(), inverted.end(), m.second) != inverted.end())
+    if(m.second.size())
     {
-      dir = -1.0;
+      axis_to_button_mapping.push_back({std::stoul(m.first), m.second});
     }
-    out.push_back({std::stoul(m.first), m.second, dir});
+    else
+    {
+      double dir = 1.0;
+      mc_joystick::Axis axis = m.second;
+      if(std::find(inverted.begin(), inverted.end(), axis) != inverted.end())
+      {
+        dir = -1.0;
+      }
+      axis_mapping.push_back({std::stoul(m.first), axis, dir});
+    }
   }
-  return out;
 }
 
 struct JoystickUpdater
@@ -94,11 +108,13 @@ struct JoystickUpdater
         return;
       }
       std::string topic = profile("topic", std::string{"/joy"});
-      auto buttons_mapping = get_buttons_mapping(profile("ros_buttons", std::map<std::string, mc_joystick::Button>{}));
-      auto axes_mapping = get_axes_mapping(profile("ros_axes", std::map<std::string, mc_joystick::Axis>{}),
-                                           profile("inverted_axes", std::vector<mc_joystick::Axis>{}));
+      auto buttons_mapping = get_buttons_mapping(profile("ros_buttons"));
+      std::vector<ROSAxisMapping> axes_mapping;
+      std::vector<ROSAxisToButtonMapping> axes_buttons_mapping;
+      get_axes_mapping(profile("ros_axes"), profile("inverted_axes"), axes_mapping, axes_buttons_mapping);
       sub_ = nh->subscribe<sensor_msgs::Joy>(
-          topic, 100, [this, buttons_mapping, axes_mapping](const sensor_msgs::JoyConstPtr & msg_ptr) {
+          topic, 100,
+          [this, buttons_mapping, axes_mapping, axes_buttons_mapping](const sensor_msgs::JoyConstPtr & msg_ptr) {
             const auto & msg = *msg_ptr;
             for(const auto & bm : buttons_mapping)
             {
@@ -115,6 +131,15 @@ struct JoystickUpdater
                 continue;
               }
               update_state_.axes[static_cast<size_t>(am.axis)] = am.dir * msg.axes[am.index];
+            }
+            for(const auto & am : axes_buttons_mapping)
+            {
+              if(am.index >= msg.axes.size())
+              {
+                continue;
+              }
+              update_state_.buttons[static_cast<size_t>(am.buttons[0])] = msg.axes[am.index] == -1.0;
+              update_state_.buttons[static_cast<size_t>(am.buttons[1])] = msg.axes[am.index] == 1.0;
             }
             publish_state_ = update_state_;
           });
@@ -196,6 +221,7 @@ void Joystick::reset(mc_control::MCGlobalController & gc)
 
 void Joystick::before(mc_control::MCGlobalController &)
 {
+  ros::spinOnce();
   for(auto & joy : joysticks_)
   {
     joy->run_callbacks();

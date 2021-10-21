@@ -25,7 +25,7 @@ enum class Button : std::uint8_t
   Select,
   Start,
   Home,
-  DPad_UP,
+  DPad_Up,
   DPad_Down,
   DPad_Left,
   DPad_Right,
@@ -51,7 +51,6 @@ enum class Axis : std::uint8_t
   COUNT = R2 + 1 // provide a count of Axis in the library for internal use
 };
 
-
 struct State
 {
   static constexpr size_t ButtonCount = static_cast<size_t>(Button::COUNT);
@@ -67,11 +66,11 @@ struct State
     }
   };
 
-  struct AxisArray : public std::array<bool, AxisCount>
+  struct AxisArray : public std::array<double, AxisCount>
   {
-    using std::array<bool, AxisCount>::operator[];
+    using std::array<double, AxisCount>::operator[];
 
-    bool operator[](mc_joystick::Axis a) const noexcept
+    double operator[](mc_joystick::Axis a) const noexcept
     {
       return (*this)[static_cast<size_t>(a)];
     }
@@ -95,11 +94,14 @@ struct ConfigurationLoader<mc_joystick::Button>
   {
     std::string in = config;
 #define LOAD_IT(BUTTON)                 \
-  if(in == #BUTTON)                     \
+  else if(in == #BUTTON)                \
   {                                     \
     return mc_joystick::Button::BUTTON; \
   }
-    LOAD_IT(Y)
+    if(in == "YY")
+    {
+      return mc_joystick::Button::Y;
+    }
     LOAD_IT(B)
     LOAD_IT(A)
     LOAD_IT(X)
@@ -110,7 +112,7 @@ struct ConfigurationLoader<mc_joystick::Button>
     LOAD_IT(Select)
     LOAD_IT(Start)
     LOAD_IT(Home)
-    LOAD_IT(DPad_UP)
+    LOAD_IT(DPad_Up)
     LOAD_IT(DPad_Down)
     LOAD_IT(DPad_Left)
     LOAD_IT(DPad_Right)
@@ -125,25 +127,25 @@ struct ConfigurationLoader<mc_joystick::Button>
     mc_rtc::Configuration config;
 #define SAVE_CASE(BUTTON)           \
   case mc_joystick::Button::BUTTON: \
-    config.add("b", #BUTTON);       \
-    return config("b");
+    return #BUTTON
     switch(button)
     {
-      SAVE_CASE(Y)
-      SAVE_CASE(B)
-      SAVE_CASE(A)
-      SAVE_CASE(X)
-      SAVE_CASE(L1)
-      SAVE_CASE(L3)
-      SAVE_CASE(R1)
-      SAVE_CASE(R3)
-      SAVE_CASE(Select)
-      SAVE_CASE(Start)
-      SAVE_CASE(Home)
-      SAVE_CASE(DPad_UP)
-      SAVE_CASE(DPad_Down)
-      SAVE_CASE(DPad_Left)
-      SAVE_CASE(DPad_Right)
+      case mc_joystick::Button::Y:
+        return "YY";
+        SAVE_CASE(B);
+        SAVE_CASE(A);
+        SAVE_CASE(X);
+        SAVE_CASE(L1);
+        SAVE_CASE(L3);
+        SAVE_CASE(R1);
+        SAVE_CASE(R3);
+        SAVE_CASE(Select);
+        SAVE_CASE(Start);
+        SAVE_CASE(Home);
+        SAVE_CASE(DPad_Up);
+        SAVE_CASE(DPad_Down);
+        SAVE_CASE(DPad_Left);
+        SAVE_CASE(DPad_Right);
       default:
         config.add("b", "UNKNOWN");
         return config("b");
@@ -159,11 +161,14 @@ struct ConfigurationLoader<mc_joystick::Axis>
   {
     std::string in = config;
 #define LOAD_IT(AXIS)               \
-  if(in == #AXIS)                   \
+  else if(in == #AXIS)              \
   {                                 \
     return mc_joystick::Axis::AXIS; \
   }
-    LOAD_IT(Left_LR)
+    if(in == "Left_LR")
+    {
+      return mc_joystick::Axis::Left_LR;
+    }
     LOAD_IT(Left_UD)
     LOAD_IT(Right_LR)
     LOAD_IT(Right_UD)
@@ -180,8 +185,7 @@ struct ConfigurationLoader<mc_joystick::Axis>
     mc_rtc::Configuration config;
 #define SAVE_CASE(AXIS)         \
   case mc_joystick::Axis::AXIS: \
-    config.add("a", #AXIS);     \
-    return config("a");
+    return #AXIS;
     switch(button)
     {
       SAVE_CASE(Left_LR)
