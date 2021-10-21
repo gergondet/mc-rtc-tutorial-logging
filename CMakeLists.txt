@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.6)
 
 set(CXX_DISABLE_WERROR 1)
 set(CMAKE_CXX_STANDARD 17)
@@ -12,6 +12,10 @@ project(${PROJECT_NAME} LANGUAGES C CXX VERSION 1.0.0)
 # Check if the project is built inside mc_rtc
 if(NOT TARGET mc_rtc::mc_control)
   find_package(mc_rtc REQUIRED)
+endif()
+
+if(NOT TARGET mc_rtc::mc_rtc_ros)
+  message(FATAL_ERROR "mc_rtc ROS plugin must be installed to build this tutorial")
 endif()
 
 add_subdirectory(src)
