@@ -52,10 +52,13 @@ states: {}
 configs:
   TutorialLogging_Initial:
     FloatingBase:
+      name: FloatingBaseTask
       frame: base_link
     LeftHand:
+      name: LeftHandTask
       frame: LeftHand
     RightHand:
+      name: RightHandTask
       frame: RightHand
     joystick:
       translation_speed: 0.001
@@ -65,3 +68,4 @@ transitions:
 - [TutorialLogging_Initial, OK, TutorialLogging_Initial, Strict]
 # Initial state
 init: TutorialLogging_Initial
+Plugins: [Joystick]

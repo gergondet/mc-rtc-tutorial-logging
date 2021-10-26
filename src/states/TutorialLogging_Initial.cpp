@@ -20,12 +20,24 @@ void TutorialLogging_Initial::start(mc_control::fsm::Controller & ctl)
   update_state(ctl);
   previous_state_ = current_state_;
 
+#if MC_RTC_VERSION_MAJOR > 1
   auto transform_task_without_fb = [](mc_tasks::TransformTask & tf) {
+#else
+  auto transform_task_without_fb = [&](mc_tasks::SurfaceTransformTask & tf) {
+#endif
     std::vector<std::string> active_joints;
+#if MC_RTC_VERSION_MAJOR > 1
     auto jointsPath = tf.frame().rbdJacobian().jointsPath();
+#else
+    auto jointsPath = rbd::Jacobian(ctl.robot().mb(), ctl.robot().surface(tf.surface()).bodyName()).jointsPath();
+#endif
     for(const auto & jIndex : jointsPath)
     {
+#if MC_RTC_VERSION_MAJOR > 1
       const auto & joint = tf.robot().mb().joint(jIndex);
+#else
+      const auto & joint = ctl.robot().mb().joint(jIndex);
+#endif
       if(joint.dof() == 1)
       {
         active_joints.push_back(joint.name());
@@ -35,17 +47,35 @@ void TutorialLogging_Initial::start(mc_control::fsm::Controller & ctl)
   };
 
   auto fb_config = config_("FloatingBase", mc_rtc::Configuration{});
+#if MC_RTC_VERSION_MAJOR > 1
   fb_config.add("type", "transform");
   fb_task_ = mc_tasks::MetaTaskLoader::load<mc_tasks::TransformTask>(ctl.solver(), fb_config);
+#else
+  fb_config.add("type", "body6d");
+  fb_config.add("body", fb_config("frame"));
+  fb_task_ = mc_tasks::MetaTaskLoader::load<mc_tasks::EndEffectorTask>(ctl.solver(), fb_config);
+#endif
 
   auto lh_config = config_("LeftHand", mc_rtc::Configuration{});
+#if MC_RTC_VERSION_MAJOR > 1
   lh_config.add("type", "transform");
   lh_task_ = mc_tasks::MetaTaskLoader::load<mc_tasks::TransformTask>(ctl.solver(), lh_config);
+#else
+  lh_config.add("type", "surfaceTransform");
+  lh_config.add("surface", lh_config("frame"));
+  lh_task_ = mc_tasks::MetaTaskLoader::load<mc_tasks::SurfaceTransformTask>(ctl.solver(), lh_config);
+#endif
   transform_task_without_fb(*lh_task_);
 
   auto rh_config = config_("RightHand", mc_rtc::Configuration{});
+#if MC_RTC_VERSION_MAJOR > 1
   rh_config.add("type", "transform");
   rh_task_ = mc_tasks::MetaTaskLoader::load<mc_tasks::TransformTask>(ctl.solver(), rh_config);
+#else
+  rh_config.add("type", "surfaceTransform");
+  rh_config.add("surface", rh_config("frame"));
+  rh_task_ = mc_tasks::MetaTaskLoader::load<mc_tasks::SurfaceTransformTask>(ctl.solver(), rh_config);
+#endif
   transform_task_without_fb(*rh_task_);
 
   auto joystick_config = config_("joystick", mc_rtc::Configuration{});
@@ -56,7 +86,11 @@ void TutorialLogging_Initial::start(mc_control::fsm::Controller & ctl)
   ctl.solver().addTask(lh_task_);
   ctl.solver().addTask(rh_task_);
 
+#if MC_RTC_VERSION_MAJOR > 1
   ctl.gui().addElement(
+#else
+  ctl.gui()->addElement(
+#endif
       {}, mc_rtc::gui::Label("Task controlled by joystick:", [this]() { return joystick_task().name(); }),
       mc_rtc::gui::Label("Control frame:", [this]() { return joystick_local_transform_ ? "Local" : "Global"; }),
       mc_rtc::gui::Label("Control type:",
@@ -88,8 +122,12 @@ bool TutorialLogging_Initial::run(mc_control::fsm::Controller & ctl)
     joystick_local_transform_ = current_state_.axes[Axis::R2] <= 0.0;
   }
 
+#if MC_RTC_VERSION_MAJOR > 1
   auto & task = joystick_task();
   sva::PTransformd target = task.target();
+#else
+  sva::PTransformd target = joystick_task_target();
+#endif
   sva::PTransformd offset = sva::PTransformd::Identity();
   if(joystick_control_rotation_)
   {
@@ -112,7 +150,11 @@ bool TutorialLogging_Initial::run(mc_control::fsm::Controller & ctl)
   {
     target = target * offset;
   }
+#if MC_RTC_VERSION_MAJOR > 1
   task.target(target);
+#else
+  joystick_task_target(target);
+#endif
   return done_;
 }
 
@@ -129,7 +171,11 @@ void TutorialLogging_Initial::update_state(mc_control::fsm::Controller & ctl)
   current_state_ = *ctl.datastore().get<const mc_joystick::State *>(joystick_);
 }
 
+#if MC_RTC_VERSION_MAJOR > 1
 mc_tasks::TransformTask & TutorialLogging_Initial::joystick_task()
+#else
+mc_tasks::MetaTask & TutorialLogging_Initial::joystick_task()
+#endif
 {
   switch(joystick_task_)
   {
@@ -139,6 +185,34 @@ mc_tasks::TransformTask & TutorialLogging_Initial::joystick_task()
       return *lh_task_;
     default:
       return *rh_task_;
+  }
+}
+
+sva::PTransformd TutorialLogging_Initial::joystick_task_target()
+{
+  switch(joystick_task_)
+  {
+    case 0:
+      return fb_task_->get_ef_pose();
+    case 1:
+      return lh_task_->target();
+    default:
+      return rh_task_->target();
+  }
+}
+
+void TutorialLogging_Initial::joystick_task_target(const sva::PTransformd & target)
+{
+  switch(joystick_task_)
+  {
+    case 0:
+      fb_task_->set_ef_pose(target);
+      break;
+    case 1:
+      lh_task_->target(target);
+      break;
+    default:
+      rh_task_->target(target);
   }
 }
 
