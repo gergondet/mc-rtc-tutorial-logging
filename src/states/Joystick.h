@@ -12,7 +12,7 @@
 
 #include "../plugins/JoystickState.h"
 
-struct TutorialLogging_Initial : mc_control::fsm::State
+struct Joystick : mc_control::fsm::State
 {
 
   void configure(const mc_rtc::Configuration & config) override;
@@ -34,7 +34,6 @@ private:
   std::shared_ptr<mc_tasks::SurfaceTransformTask> lh_task_;
   std::shared_ptr<mc_tasks::SurfaceTransformTask> rh_task_;
 #endif
-  std::string joystick_;
   size_t joystick_task_ = 0;
   double joystick_translation_speed_ = 0.01;
   double joystick_rotation_speed_ = 0.01;
@@ -45,6 +44,7 @@ private:
   bool done_ = false;
 
   void update_state(mc_control::fsm::Controller & ctl);
+  std::function<void(mc_control::fsm::Controller & ctl)> update_state_callback_;
 
 #if MC_RTC_VERSION_MAJOR > 1
   mc_tasks::TransformTask & joystick_task();

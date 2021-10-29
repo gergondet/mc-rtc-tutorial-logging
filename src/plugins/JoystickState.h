@@ -64,6 +64,11 @@ struct State
     {
       return (*this)[static_cast<size_t>(b)];
     }
+
+    bool & operator[](mc_joystick::Button b) noexcept
+    {
+      return (*this)[static_cast<size_t>(b)];
+    }
   };
 
   struct AxisArray : public std::array<double, AxisCount>
@@ -71,6 +76,11 @@ struct State
     using std::array<double, AxisCount>::operator[];
 
     double operator[](mc_joystick::Axis a) const noexcept
+    {
+      return (*this)[static_cast<size_t>(a)];
+    }
+
+    double & operator[](mc_joystick::Axis a) noexcept
     {
       return (*this)[static_cast<size_t>(a)];
     }

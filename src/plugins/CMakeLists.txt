@@ -9,7 +9,8 @@ set(Joystick_HDR
   Joystick.h
 )
 
-option(AUTOLOAD_Joystick_PLUGIN "Automatically load Joystick plugin" OFF)
-add_plugin(Joystick "${Joystick_SRC}" "${Joystick_HDR}")
-target_link_libraries(Joystick PUBLIC mc_rtc::mc_rtc_ros PkgConfig::sensor_msgs)
+option(AUTOLOAD_JoystickPlugin_PLUGIN "Automatically load Joystick plugin" OFF)
+add_plugin(JoystickPlugin "${Joystick_SRC}" "${Joystick_HDR}")
+target_link_libraries(JoystickPlugin PUBLIC mc_rtc::mc_rtc_ros PkgConfig::sensor_msgs)
+set_target_properties(JoystickPlugin PROPERTIES OUTPUT_NAME Joystick)
 install(FILES etc/Joystick.yaml DESTINATION ${MC_PLUGINS_RUNTIME_INSTALL_PREFIX}/etc/)
