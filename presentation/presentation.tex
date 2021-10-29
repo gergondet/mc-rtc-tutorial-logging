@@ -421,8 +421,8 @@
 // Load a binary file into a FlatLog
 mc_rtc::log::FlatLog flat("log.bin");
 
-// Number of entries in the log
-size_t n_entries = flat.size();
+// Number of timestep in the log
+size_t n_timesteps = flat.size();
 
 // All entries in the log
 std::set<std::string> entries = flat.entries();
